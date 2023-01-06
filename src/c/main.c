@@ -6,6 +6,7 @@ static Window *s_main_window;
 
 static TextLayer *s_time_layer;
 static TextLayer *s_timer_layer;
+static time_t last_time_minutes;
 
 static int interval = 20;
 static int elapsed = 0;
@@ -30,13 +31,19 @@ static void update_view() {
 
 static void update_time() {
   // Get a tm structure
-  time_t temp = time(NULL);
-  struct tm *tick_time = localtime(&temp);
+  time_t global_time = time(NULL);
+  time_t global_time_minutes = global_time/60;
+  if (last_time_minutes == global_time_minutes) {
+    return;
+  } else {
+    last_time_minutes = global_time_minutes;
+  }
+  struct tm *local_time = localtime(&global_time);
 
   // Write the current hours and minutes into a buffer
   static char s_buffer[8];
   strftime(s_buffer, sizeof(s_buffer), clock_is_24h_style() ?
-                                          "%H:%M" : "%I:%M", tick_time);
+                                          "%H:%M" : "%I:%M", local_time);
 
   // Display this time on the TextLayer
   text_layer_set_text(s_time_layer, s_buffer);
@@ -64,13 +71,9 @@ static void update_timer() {
   update_view();
 }
 
-static void minute_handler(struct tm *tick_time, TimeUnits units_changed) {
-  update_time();
-}
-
-
 static void second_handler(struct tm *tick_time, TimeUnits units_changed) {
   update_timer();
+  update_time();
 }
 
 static void up_click_handler(ClickRecognizerRef recognizer, void *context) {
@@ -107,16 +110,15 @@ static void down_click_handler(ClickRecognizerRef recognizer, void *context) {
   }
 }
 
-
 static void click_config_provider(void *context) {
   // Subcribe to button click events here
   uint16_t delay_ms = 500;
-  
+
   window_single_click_subscribe(BUTTON_ID_UP, up_click_handler);
-  
+
   window_single_click_subscribe(BUTTON_ID_SELECT, select_click_handler);
   window_long_click_subscribe(BUTTON_ID_SELECT, delay_ms, select_long_click_handler, NULL);
-  
+
   window_single_click_subscribe(BUTTON_ID_DOWN, down_click_handler);
 }
 
@@ -139,7 +141,7 @@ static void main_window_load(Window *window) {
   text_layer_set_text(s_time_layer, "00:00");
   text_layer_set_font(s_time_layer, fonts_get_system_font(FONT_KEY_LECO_20_BOLD_NUMBERS));
   text_layer_set_text_alignment(s_time_layer, GTextAlignmentCenter);
-  
+
   text_layer_set_background_color(s_timer_layer, GColorClear);
   text_layer_set_text_color(s_timer_layer, GColorBlack);
   text_layer_set_text(s_timer_layer, "00:00");
@@ -150,15 +152,14 @@ static void main_window_load(Window *window) {
   layer_add_child(window_layer, text_layer_get_layer(s_time_layer));
   layer_add_child(window_layer, text_layer_get_layer(s_timer_layer));
 
-  
+
   // Make sure the time & timer is displayed from the start
   update_time();
   update_timer();
-  
+
   // Register with TickTimerService
-  tick_timer_service_subscribe(MINUTE_UNIT, minute_handler);
   tick_timer_service_subscribe(SECOND_UNIT, second_handler);
-  
+
   // Use this provider to add button click subscriptions
   window_set_click_config_provider(window, click_config_provider);
 }
